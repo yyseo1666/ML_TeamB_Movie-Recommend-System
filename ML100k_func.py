@@ -3,6 +3,7 @@ import numpy as np
 
 DATA_PATH = 'ml-100k/'
 
+
 def load_and_preprocess_data(data_path: str):
     print("-- Start : Data load & Preprocessing --")
     
@@ -21,7 +22,7 @@ def load_and_preprocess_data(data_path: str):
     # --- 2. Item features - feature 생성 ---
     # 연도 추출 및 (년도) 삭제
     items['year'] = items['title'].str.extract(r'\((\d{4})\)').astype(float)
-    items['title'] = items['title'].str.replace(r'\s*\(\d{4})\)$', '', regex=True).str.strip()
+    items['title'] = items['title'].str.replace(r'\s*\(\d{4}\)$', '', regex=True).str.strip()
     
     # 연도 결측 채우기 (median 값으로 대체)
     median_year = items['year'].median()
@@ -60,6 +61,7 @@ def load_and_preprocess_data(data_path: str):
     )
     
     print("\n[ Preprocessed Data ]")
+    print(df.columns)
     print(df.head())
     print("\n-- END : Data Load & Preprocess --\n")
 
