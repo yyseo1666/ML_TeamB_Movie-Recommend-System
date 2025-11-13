@@ -31,8 +31,10 @@ BASE_DIR = Path(__file__).parent.resolve()
 DATA_ROOT = BASE_DIR / DATA_DIRNAME
 
 # SVD/추천 관련 파라미터
-ENERGY_THRESHOLD = 0.92     # 누적 에너지 기준으로 k 선택
-TOP_N = 10                  # 사용자별 추천 개수
+RUN_K_SWEEP = True      # k 하이퍼파라미터 실험 시연 여부 (False로 두면 비활성화)
+ENERGY_THRESHOLD = 0.92 # 누적 에너지 기준으로 k 선택
+MIN_K = 15              # 최소 차원(개인화 약화 방지)
+TOP_N = 10              # 사용자별 추천 개수
 CLIP_MIN, CLIP_MAX = 1.0, 5.0
 
 # 출력/저장 관련
@@ -118,13 +120,50 @@ def numpy_svd(R: np.ndarray):
 # ===============================================
 # 에너지 기준으로 k 선택 + Truncate
 # ===============================================
-def choose_k_by_energy(s: np.ndarray, threshold: float) -> int:
+def choose_k_by_energy(s: np.ndarray, threshold: float, min_k: int = 1) -> int:
     energies = np.cumsum(s**2) / np.sum(s**2)
-    k = int(np.searchsorted(energies, threshold) + 1)
-    return k
+    k0 = int(np.searchsorted(energies, threshold) + 1)
+    return max(min_k, k0)
 
 def truncate_svd(U: np.ndarray, s: np.ndarray, VT: np.ndarray, k: int):
     return U[:, :k], s[:k], VT[:k, :]
+
+# ===============================================
+# SVD 차원 k 하이퍼파라미터 실험
+# ===============================================
+def k_sweep_experiment(U, s, VT,
+                       train_R_nan: np.ndarray,
+                       test_df: pd.DataFrame,
+                       u2i: Dict[int, int],
+                       i2i: Dict[int, int],
+                       energy_threshold: float,
+                       clip_min: float,
+                       clip_max: float):
+    """
+    여러 MIN_K 값에 대해:
+      - ENERGY_THRESHOLD + MIN_K 조합으로 k를 정하고
+      - R_hat을 복원한 뒤
+      - ua.test RMSE를 출력하는 실험용 함수
+
+    최종 추천에 사용하는 k / R_hat에는 영향을 주지 않고,
+    로그(출력)만 남기는 용도.
+    """
+    candidate_min_ks = [5, 10, 15, 20, 25, 50, 75, 100] # 실험할 k 값 목록
+
+    print("\n[실험] MIN_K / k / RMSE(k) 스윕 결과")
+    total = np.sum(s**2)
+    energies = np.cumsum(s**2) / total
+
+    for min_k in candidate_min_ks:
+        # 에너지 기준으로 k_raw 선택
+        k_raw = int(np.searchsorted(energies, energy_threshold) + 1)
+        k = max(min_k, k_raw)
+
+        Uk_tmp, sk_tmp, VTk_tmp = truncate_svd(U, s, VT, k)
+        R_hat_tmp = reconstruct(Uk_tmp, sk_tmp, VTk_tmp, clip_min, clip_max)
+        rmse_tmp = rmse_on_test(R_hat_tmp, test_df, u2i, i2i)
+
+        print(f"  MIN_K={min_k:3d}, k_raw={k_raw:3d}, 최종 k={k:3d}, RMSE={rmse_tmp:.4f}")
 
 # ===============
 # 복원 & RMSE
@@ -221,8 +260,21 @@ def main():
     preview_matrix("VT", VT)
     save_matrix("03_VT_full", VT)
 
+    # === k 하이퍼파라미터 실험 ===
+    if RUN_K_SWEEP:
+        k_sweep_experiment(
+            U, s, VT,
+            train_R_nan=R_nan,
+            test_df=test,
+            u2i=u2i,
+            i2i=i2i,
+            energy_threshold=ENERGY_THRESHOLD,
+            clip_min=CLIP_MIN,
+            clip_max=CLIP_MAX
+        )
+
     # 4) 에너지 기준으로 k 선택 + Truncate
-    k = choose_k_by_energy(s, threshold=ENERGY_THRESHOLD)
+    k = choose_k_by_energy(s, threshold=ENERGY_THRESHOLD, min_k=MIN_K)
     Uk, sk, VTk = truncate_svd(U, s, VT, k)
     print(f"\n[4/8] Truncate (energy ≥ {ENERGY_THRESHOLD:.2f}) → k = {k}")
     preview_matrix("Uk", Uk)
@@ -257,10 +309,10 @@ def main():
     recs['user_id'] = recs['user_index'].map(inv_u)
     recs = recs[['user_id','item_id','pred_score','rank']]
 
-    # 추천 결과 CSV 저장 (svd_outputs 폴더)
+    # 추천 결과 CSV 저장
     recs.to_csv(RECS_CSV, index=False, encoding='utf-8')
 
-    # summary는 파일 저장 없이 터미널에만 출력
+    # summary 출력
     print("\n=== SUMMARY ===")
     print(f"selected_k            : {k}")
     print(f"energy_threshold      : {ENERGY_THRESHOLD}")
