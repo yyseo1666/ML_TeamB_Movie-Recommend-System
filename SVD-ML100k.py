@@ -14,7 +14,7 @@ MovieLens 100K dataset(ua.base / ua.test)를 이용한 SVD 추천
 디렉터리 구조:
 - 이 파일(.py)과 ml-100k/ 폴더가 같은 디렉터리에 존재
 - ml-100k/ 아래에 ua.base, ua.test, u.item 등이 존재
-- 저장된 결과 파일(.csv, .npy)은 이 파일과 같은 디렉터리에 생성되는 svd_outputs 폴더 안에 존재
+- 저장된 결과 파일(.csv, .npy)은 이 파일과 같은 디렉터리에 생성되는 SVD-ML100k_outputs 폴더 안에 존재
 """
 
 from pathlib import Path
@@ -45,7 +45,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 PREVIEW_ROWS = 5
 PREVIEW_COLS = 8
 
-# 추천 결과(csv)는 svd_outputs 폴더 안에 저장
+# 추천 결과(csv)는 outputs 폴더 안에 저장
 RECS_CSV = OUTPUT_DIR / "SVD-ML100k_recommeder.csv"
 
 # ===============================
